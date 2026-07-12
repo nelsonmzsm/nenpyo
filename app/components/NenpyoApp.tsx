@@ -1,0 +1,872 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import type { NenpyoSpec, QAItem, InterviewResponse, TimelineEvent } from "@/app/types";
+import { calcMaxQuestions } from "@/app/types";
+
+/* ─── フェードインテキスト ─── */
+
+function FadeInText({ text, isNew }: { text: string; isNew: boolean }) {
+  const chunks: string[] = [];
+  text.split(/(\n)/).forEach((part) => {
+    if (part === "\n") { chunks.push("\n"); return; }
+    for (let i = 0; i < part.length; i += 4) chunks.push(part.slice(i, i + 4));
+  });
+  const [visibleCount, setVisibleCount] = useState(isNew ? 0 : chunks.length);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!isNew) return;
+    let i = 0;
+    timerRef.current = setInterval(() => {
+      i++;
+      setVisibleCount(i);
+      if (i >= chunks.length) { clearInterval(timerRef.current!); timerRef.current = null; }
+    }, 75);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <span className="whitespace-pre-wrap">
+      {chunks.map((chunk, i) => {
+        if (chunk === "\n") return <br key={i} />;
+        const visible = i < visibleCount;
+        return (
+          <span key={i} style={{
+            opacity: visible ? 1 : 0,
+            filter: visible ? "blur(0px)" : "blur(4px)",
+            transform: visible ? "translateY(0)" : "translateY(5px)",
+            transition: "opacity 0.55s ease-out, filter 0.55s ease-out, transform 0.5s ease-out",
+            display: "inline",
+          }}>{chunk}</span>
+        );
+      })}
+    </span>
+  );
+}
+
+/* ─── 型 ─── */
+
+type Screen = "spec" | "interview" | "timeline";
+type Message = { role: "ai" | "user"; text: string; category?: string; isNew?: boolean };
+type Orientation = "horizontal" | "vertical";
+
+/* ─── ヘッダー ─── */
+
+function Header({ screen, name }: { screen: Screen; name?: string }) {
+  return (
+    <header className="border-b border-nborder bg-npanel px-5 py-4 flex items-center gap-3">
+      <span className="text-3xl">🐆</span>
+      <div>
+        <span className="font-display italic text-ngold text-2xl tracking-tight">じぶん年表</span>
+        <span className="text-xs text-ngray border border-nborder px-1.5 py-0.5 tracking-wider ml-2">β版</span>
+      </div>
+      {screen === "interview" && name && (
+        <span className="ml-auto text-sm text-ngray">{name}さんの半生</span>
+      )}
+    </header>
+  );
+}
+
+/* ─── 仕様入力画面 ─── */
+
+function SpecScreen({
+  onStart,
+  startError,
+}: {
+  onStart: (spec: NenpyoSpec) => void;
+  startError: string | null;
+}) {
+  const [name, setName] = useState("");
+  const [kana, setKana] = useState("");
+  const [birthYear, setBirthYear] = useState("");
+
+  const currentYear = new Date().getFullYear();
+  const age = birthYear ? currentYear - Number(birthYear) : null;
+  const maxQ = birthYear ? calcMaxQuestions(Number(birthYear)) : 8;
+
+  const canStart = name.trim().length > 0 && birthYear.length === 4 && Number(birthYear) >= 1900 && Number(birthYear) <= currentYear;
+
+  return (
+    <div className="min-h-screen bg-nbase flex flex-col">
+      <Header screen="spec" />
+      <div className="flex-1 flex items-center justify-center px-5 py-10">
+        <div className="w-full max-w-lg">
+          <div className="bg-npanel border border-nborder p-7 mb-6">
+            <div className="flex items-start gap-4 mb-8">
+              <span className="text-4xl flex-shrink-0">🐆</span>
+              <div className="bg-ndark border border-nborder px-5 py-4 text-base text-ntext leading-loose">
+                こんにちは！わたしは「ねんピョウ」です。あなたの半生をインタビューして、「じぶん年表」を作るお手伝いをします。まず、お名前と生まれ年を教えてください！
+                <p className="mt-3 text-sm text-ngray">
+                  🕐 所要時間の目安：
+                  {age !== null
+                    ? `約${maxQ * 2}〜${maxQ * 3}分（${maxQ}問）`
+                    : "約15〜25分（生まれ年を入力すると更新します）"}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div>
+                <label className="text-sm font-bold text-ntext block mb-2">お名前 <span className="text-ngold">*</span></label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="例：田中 太郎"
+                  className="w-full border-2 border-nborder bg-nbase px-4 py-3 text-base text-ntext focus:outline-none focus:border-ngold"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-ntext block mb-2">読み方 <span className="text-ngray text-sm font-normal">（任意）</span></label>
+                <input
+                  type="text"
+                  value={kana}
+                  onChange={(e) => setKana(e.target.value)}
+                  placeholder="例：たなか たろう"
+                  className="w-full border-2 border-nborder bg-nbase px-4 py-3 text-base text-ntext focus:outline-none focus:border-ngold"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-ntext block mb-2">生まれ年（西暦） <span className="text-ngold">*</span></label>
+                <input
+                  type="number"
+                  value={birthYear}
+                  onChange={(e) => setBirthYear(e.target.value)}
+                  placeholder="例：1985"
+                  min="1900"
+                  max={currentYear}
+                  className="w-full border-2 border-nborder bg-nbase px-4 py-3 text-base text-ntext focus:outline-none focus:border-ngold"
+                />
+                {age !== null && (
+                  <p className="text-sm text-ngray mt-2">現在 {age}歳 ／ インタビュー約{maxQ}問の予定</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {startError && (
+            <p className="text-red-500 text-sm text-center mb-4">{startError}</p>
+          )}
+
+          <button
+            onClick={() => canStart && onStart({ name: name.trim(), birthYear: Number(birthYear), kana: kana.trim() || undefined })}
+            disabled={!canStart}
+            className="w-full bg-ngold text-white py-4 text-lg font-bold tracking-wider hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            インタビューをはじめる
+          </button>
+
+          <p className="text-sm text-ngray text-center mt-5">
+            入力した情報はAIインタビューにのみ使用します
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── インタビュー画面 ─── */
+
+function InterviewScreen({
+  spec,
+  messages,
+  input,
+  setInput,
+  isLoading,
+  error,
+  isInterviewComplete,
+  answeredCount,
+  onSend,
+  onSkip,
+  onGenerateTimeline,
+  isGeneratingTimeline,
+  interviewHistoryLen,
+  onBack,
+}: {
+  spec: NenpyoSpec;
+  messages: Message[];
+  input: string;
+  setInput: (v: string) => void;
+  isLoading: boolean;
+  error: string | null;
+  isInterviewComplete: boolean;
+  answeredCount: number;
+  onSend: () => void;
+  onSkip: () => void;
+  onGenerateTimeline: () => void;
+  isGeneratingTimeline: boolean;
+  interviewHistoryLen: number;
+  onBack: () => void;
+}) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isComposingRef = useRef(false);
+  const maxQ = calcMaxQuestions(spec.birthYear);
+  const progress = Math.min(100, Math.round((answeredCount / maxQ) * 100));
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) { e.preventDefault(); onSend(); }
+  };
+
+  return (
+    <div className="min-h-screen bg-nbase flex flex-col">
+      <Header screen="interview" name={spec.name} />
+
+      {/* プログレス */}
+      <div className="bg-npanel border-b border-nborder px-5 py-3 flex items-center gap-3 no-print">
+        <div className="flex-1 h-2 bg-ndark overflow-hidden rounded-full">
+          <div className="h-full bg-ngold transition-all duration-500 rounded-full" style={{ width: `${progress}%` }} />
+        </div>
+        <span className="text-sm text-ngray flex-shrink-0">{answeredCount}/{maxQ}問</span>
+        {interviewHistoryLen > 0 && (
+          <button onClick={onBack} className="text-sm text-ngray hover:text-ntext transition-colors flex-shrink-0 px-2 py-1">
+            ← 戻る
+          </button>
+        )}
+      </div>
+
+      {/* メッセージ */}
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5 max-w-2xl mx-auto w-full">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
+            {msg.role === "ai" && <span className="text-3xl flex-shrink-0 mt-1">🐆</span>}
+            <div className={`max-w-[85%] px-5 py-4 text-base leading-loose ${
+              msg.role === "ai"
+                ? "bg-npanel border border-nborder text-ntext"
+                : "bg-ngold text-white"
+            }`}>
+              {msg.role === "ai" && msg.isNew
+                ? <FadeInText text={msg.text} isNew={true} />
+                : <span className="whitespace-pre-wrap">{msg.text}</span>
+              }
+              {msg.category && (
+                <span className="block text-xs text-ngray mt-2 tracking-wider">{msg.category}</span>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {isLoading && (
+          <div className="flex gap-3">
+            <span className="text-3xl flex-shrink-0 mt-1">🐆</span>
+            <div className="bg-npanel border border-nborder px-5 py-4">
+              <span className="text-ngray text-base animate-pulse">考え中…</span>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <p className="text-red-500 text-sm text-center">{error}</p>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* 入力エリア */}
+      <div className="border-t border-nborder bg-npanel px-4 py-4 no-print">
+        <div className="max-w-2xl mx-auto">
+          {isInterviewComplete ? (
+            <button
+              onClick={onGenerateTimeline}
+              disabled={isGeneratingTimeline}
+              className="w-full bg-ngold text-white py-5 text-lg font-bold tracking-wider hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {isGeneratingTimeline ? "年表を作成中…" : "🗓️ じぶん年表を作る"}
+            </button>
+          ) : (
+            <div className="flex gap-3">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onCompositionStart={() => { isComposingRef.current = true; }}
+                onCompositionEnd={() => { isComposingRef.current = false; }}
+                placeholder="ここに入力してください（Enterで送信）"
+                rows={3}
+                disabled={isLoading}
+                className="flex-1 border-2 border-nborder bg-nbase px-4 py-3 text-base text-ntext focus:outline-none focus:border-ngold resize-none disabled:opacity-50"
+              />
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={onSend}
+                  disabled={!input.trim() || isLoading}
+                  className="bg-ngold text-white px-6 py-3 text-base font-bold hover:opacity-90 transition-opacity disabled:opacity-40 flex-1"
+                >
+                  送信
+                </button>
+                <button
+                  onClick={onSkip}
+                  disabled={isLoading}
+                  className="border-2 border-nborder text-ngray px-6 py-3 text-sm hover:text-ntext hover:border-ntext transition-colors disabled:opacity-40"
+                >
+                  スキップ
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── 年表画面 ─── */
+
+function TimelineScreen({
+  spec,
+  events,
+  onEventsChange,
+  onRestart,
+}: {
+  spec: NenpyoSpec;
+  events: TimelineEvent[];
+  onEventsChange: (events: TimelineEvent[]) => void;
+  onRestart: () => void;
+}) {
+  const [orientation, setOrientation] = useState<Orientation>("horizontal");
+  const [copiedText, setCopiedText] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const updateEvent = (id: string, field: keyof TimelineEvent, value: string) => {
+    onEventsChange(events.map((e) => e.id === id ? { ...e, [field]: value } : e));
+  };
+
+  const deleteEvent = (id: string) => {
+    onEventsChange(events.filter((e) => e.id !== id));
+  };
+
+  const addEvent = () => {
+    const newEvent: TimelineEvent = {
+      id: `ev-new-${Date.now()}`,
+      year: "",
+      age: "",
+      event: "",
+      emotion: "",
+    };
+    onEventsChange([...events, newEvent]);
+    setEditingId(newEvent.id);
+  };
+
+  const moveEvent = (id: string, dir: -1 | 1) => {
+    const idx = events.findIndex((e) => e.id === id);
+    if (idx < 0) return;
+    const next = idx + dir;
+    if (next < 0 || next >= events.length) return;
+    const arr = [...events];
+    [arr[idx], arr[next]] = [arr[next], arr[idx]];
+    onEventsChange(arr);
+  };
+
+  const toPlainText = () => {
+    const lines = [`【じぶん年表】${spec.name}さんの半生\n`];
+    events.forEach((e) => {
+      const yearAge = [e.year, e.age].filter(Boolean).join("（") + (e.age ? "）" : "");
+      const emotion = e.emotion ? `　—— ${e.emotion}` : "";
+      lines.push(`${yearAge}　${e.event}${emotion}`);
+    });
+    return lines.join("\n");
+  };
+
+  const handleCopyText = () => {
+    navigator.clipboard.writeText(toPlainText()).then(() => {
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2000);
+    });
+  };
+
+  const handlePrint = () => window.print();
+
+  return (
+    <div className="min-h-screen bg-nbase flex flex-col">
+      <Header screen="timeline" name={spec.name} />
+
+      {/* ツールバー */}
+      <div className="bg-npanel border-b border-nborder px-4 py-2 flex items-center gap-2 flex-wrap no-print">
+        <span className="text-xs text-ngray mr-2">表示：</span>
+        <button
+          onClick={() => setOrientation("horizontal")}
+          className={`text-xs px-3 py-1 border transition-colors ${orientation === "horizontal" ? "border-ngold text-ngold" : "border-nborder text-ngray hover:text-ntext"}`}
+        >
+          横書き（縦読み）
+        </button>
+        <button
+          onClick={() => setOrientation("vertical")}
+          className={`text-xs px-3 py-1 border transition-colors ${orientation === "vertical" ? "border-ngold text-ngold" : "border-nborder text-ngray hover:text-ntext"}`}
+        >
+          縦書き（横読み）
+        </button>
+        <div className="flex-1" />
+        <button onClick={handleCopyText} className="text-xs px-3 py-1 border border-nborder text-ngray hover:text-ntext transition-colors">
+          {copiedText ? "コピー済み ✓" : "テキストコピー"}
+        </button>
+        <button onClick={handlePrint} className="text-xs px-3 py-1 bg-ngold text-white hover:opacity-90 transition-opacity">
+          PDF保存 / 印刷
+        </button>
+      </div>
+
+      <div className="flex-1 px-4 py-6 max-w-3xl mx-auto w-full">
+        {/* タイトル */}
+        <div className="mb-6 print-container">
+          <h1 className={`font-display text-2xl text-ngold ${orientation === "vertical" ? "writing-vertical" : ""}`}>
+            じぶん年表
+          </h1>
+          <p className="text-sm text-ngray mt-1">{spec.name}さんの半生</p>
+        </div>
+
+        {/* 年表本体 */}
+        {orientation === "horizontal" ? (
+          <HorizontalTimeline
+            events={events}
+            editingId={editingId}
+            setEditingId={setEditingId}
+            onUpdate={updateEvent}
+            onDelete={deleteEvent}
+            onMove={moveEvent}
+          />
+        ) : (
+          <VerticalTimeline
+            events={events}
+            editingId={editingId}
+            setEditingId={setEditingId}
+            onUpdate={updateEvent}
+            onDelete={deleteEvent}
+            onMove={moveEvent}
+          />
+        )}
+
+        {/* 項目追加 */}
+        <button
+          onClick={addEvent}
+          className="mt-4 w-full border border-dashed border-nborder text-ngray text-sm py-2 hover:border-ngold hover:text-ngold transition-colors no-print"
+        >
+          ＋ 項目を追加
+        </button>
+
+        {/* SNSシェア */}
+        <div className="mt-8 flex flex-wrap gap-2 no-print">
+          <button
+            onClick={() => {
+              const text = `じぶん年表をつくりました！\n${spec.name}さんの半生（${events.length}項目）\n\nhttps://nenpyo.vercel.app`;
+              window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
+            }}
+            className="text-xs px-4 py-2 bg-black text-white hover:opacity-80 transition-opacity"
+          >
+            𝕏 でシェア
+          </button>
+          <button
+            onClick={() => {
+              const text = `じぶん年表をつくりました！\n${spec.name}さんの半生（${events.length}項目）`;
+              window.open(`https://line.me/R/msg/text/?${encodeURIComponent(text)}`, "_blank");
+            }}
+            className="text-xs px-4 py-2 bg-[#00B900] text-white hover:opacity-80 transition-opacity"
+          >
+            LINE でシェア
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={onRestart}
+            className="text-xs px-4 py-2 border border-nborder text-ngray hover:text-ntext transition-colors"
+          >
+            最初からやり直す
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── 横書き年表 ─── */
+
+function HorizontalTimeline({
+  events, editingId, setEditingId, onUpdate, onDelete, onMove,
+}: {
+  events: TimelineEvent[];
+  editingId: string | null;
+  setEditingId: (id: string | null) => void;
+  onUpdate: (id: string, field: keyof TimelineEvent, value: string) => void;
+  onDelete: (id: string) => void;
+  onMove: (id: string, dir: -1 | 1) => void;
+}) {
+  return (
+    <div className="space-y-0 print-container">
+      {events.map((event, idx) => {
+        const isEditing = editingId === event.id;
+        return (
+          <div key={event.id} className="flex gap-0 group">
+            {/* 年・年齢 */}
+            <div className="w-28 flex-shrink-0 py-3 pr-4 text-right">
+              {isEditing ? (
+                <div className="space-y-1">
+                  <input
+                    className="w-full border border-ngold bg-nbase px-1 py-0.5 text-xs text-ntext focus:outline-none text-right"
+                    value={event.year}
+                    onChange={(e) => onUpdate(event.id, "year", e.target.value)}
+                    placeholder="1990年"
+                  />
+                  <input
+                    className="w-full border border-nborder bg-nbase px-1 py-0.5 text-xs text-ngray focus:outline-none text-right"
+                    value={event.age ?? ""}
+                    onChange={(e) => onUpdate(event.id, "age", e.target.value)}
+                    placeholder="2歳"
+                  />
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm font-bold text-ntext">{event.year}</p>
+                  {event.age && <p className="text-xs text-ngray">{event.age}</p>}
+                </>
+              )}
+            </div>
+
+            {/* タイムラインライン */}
+            <div className="flex flex-col items-center mx-2">
+              <div className="w-3 h-3 rounded-full bg-ngold flex-shrink-0 mt-4" />
+              {idx < events.length - 1 && <div className="w-0.5 flex-1 bg-nborder min-h-[1.5rem]" />}
+            </div>
+
+            {/* 内容 */}
+            <div className="flex-1 py-3 pl-2 pb-4">
+              {isEditing ? (
+                <div className="space-y-1">
+                  <input
+                    className="w-full border border-ngold bg-nbase px-2 py-1 text-sm text-ntext focus:outline-none"
+                    value={event.event}
+                    onChange={(e) => onUpdate(event.id, "event", e.target.value)}
+                    placeholder="出来事を入力"
+                  />
+                  <input
+                    className="w-full border border-nborder bg-nbase px-2 py-1 text-xs text-ngray focus:outline-none"
+                    value={event.emotion ?? ""}
+                    onChange={(e) => onUpdate(event.id, "emotion", e.target.value)}
+                    placeholder="感情・動機（任意）"
+                  />
+                  <div className="flex gap-1 mt-1">
+                    <button onClick={() => setEditingId(null)} className="text-xs text-white bg-ngold px-3 py-1">保存</button>
+                    <button onClick={() => onDelete(event.id)} className="text-xs text-red-400 border border-red-200 px-3 py-1">削除</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-ntext">{event.event}</p>
+                    {event.emotion && <p className="text-xs text-ngold mt-0.5">{event.emotion}</p>}
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity no-print flex-shrink-0">
+                    <button onClick={() => onMove(event.id, -1)} className="text-xs text-ngray hover:text-ntext px-1">↑</button>
+                    <button onClick={() => onMove(event.id, 1)} className="text-xs text-ngray hover:text-ntext px-1">↓</button>
+                    <button onClick={() => setEditingId(event.id)} className="text-xs text-ngray hover:text-ntext px-1">編集</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── 縦書き年表 ─── */
+
+function VerticalTimeline({
+  events, editingId, setEditingId, onUpdate, onDelete, onMove,
+}: {
+  events: TimelineEvent[];
+  editingId: string | null;
+  setEditingId: (id: string | null) => void;
+  onUpdate: (id: string, field: keyof TimelineEvent, value: string) => void;
+  onDelete: (id: string) => void;
+  onMove: (id: string, dir: -1 | 1) => void;
+}) {
+  return (
+    <div
+      className="overflow-x-auto print-container"
+      style={{ writingMode: "vertical-rl", minHeight: "400px" }}
+    >
+      <div className="flex gap-0">
+        {events.map((event, idx) => {
+          const isEditing = editingId === event.id;
+          return (
+            <div key={event.id} className="flex flex-col items-center group" style={{ minWidth: "5rem" }}>
+              {/* 内容 */}
+              <div className="flex-1 px-2 pt-4 pb-2">
+                {isEditing ? (
+                  <div style={{ writingMode: "horizontal-tb" }} className="w-48 space-y-1">
+                    <input
+                      className="w-full border border-ngold bg-nbase px-2 py-1 text-sm text-ntext focus:outline-none"
+                      value={event.year}
+                      onChange={(e) => onUpdate(event.id, "year", e.target.value)}
+                      placeholder="1990年"
+                    />
+                    <input
+                      className="w-full border border-nborder bg-nbase px-2 py-1 text-xs text-ngray focus:outline-none"
+                      value={event.age ?? ""}
+                      onChange={(e) => onUpdate(event.id, "age", e.target.value)}
+                      placeholder="2歳"
+                    />
+                    <input
+                      className="w-full border border-ngold bg-nbase px-2 py-1 text-sm text-ntext focus:outline-none"
+                      value={event.event}
+                      onChange={(e) => onUpdate(event.id, "event", e.target.value)}
+                      placeholder="出来事"
+                    />
+                    <div className="flex gap-1 mt-1">
+                      <button onClick={() => setEditingId(null)} className="text-xs text-white bg-ngold px-3 py-1">保存</button>
+                      <button onClick={() => onDelete(event.id)} className="text-xs text-red-400 border border-red-200 px-3 py-1">削除</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-ntext mb-1">{event.event}</p>
+                    {event.emotion && <p className="text-xs text-ngold">{event.emotion}</p>}
+                  </>
+                )}
+              </div>
+
+              {/* タイムラインライン */}
+              <div className="flex items-center gap-0 my-1">
+                {idx > 0 && <div className="h-0.5 w-8 bg-nborder" />}
+                <div className="w-3 h-3 rounded-full bg-ngold flex-shrink-0" />
+                {idx < events.length - 1 && <div className="h-0.5 w-8 bg-nborder" />}
+              </div>
+
+              {/* 年・年齢 */}
+              <div className="px-2 pb-3 text-center">
+                <p className="text-xs font-bold text-ntext">{event.year}</p>
+                {event.age && <p className="text-[10px] text-ngray">{event.age}</p>}
+              </div>
+
+              {/* 編集ボタン */}
+              {!isEditing && (
+                <div style={{ writingMode: "horizontal-tb" }} className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity no-print mb-2">
+                  <button onClick={() => onMove(event.id, -1)} className="text-xs text-ngray hover:text-ntext">←</button>
+                  <button onClick={() => onMove(event.id, 1)} className="text-xs text-ngray hover:text-ntext">→</button>
+                  <button onClick={() => setEditingId(event.id)} className="text-xs text-ngray hover:text-ntext">編集</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── メインアプリ ─── */
+
+export function NenpyoApp() {
+  const [screen, setScreen]               = useState<Screen>("spec");
+  const [spec, setSpec]                   = useState<NenpyoSpec | null>(null);
+  const [messages, setMessages]           = useState<Message[]>([]);
+  const [qaHistory, setQaHistory]         = useState<QAItem[]>([]);
+  const [input, setInput]                 = useState("");
+  const [answeredCount, setAnsweredCount] = useState(0);
+  const [isLoading, setIsLoading]         = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [startError, setStartError]       = useState<string | null>(null);
+  const [isInterviewComplete, setIsInterviewComplete] = useState(false);
+  const [isClosingAsked, setIsClosingAsked]           = useState(false);
+  const [isGeneratingTimeline, setIsGeneratingTimeline] = useState(false);
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [clientId, setClientId]           = useState("");
+  const [interviewHistory, setInterviewHistory] = useState<Array<{
+    messages: Message[]; qaHistory: QAItem[]; answeredCount: number; isInterviewComplete: boolean; isClosingAsked: boolean;
+  }>>([]);
+
+  useEffect(() => {
+    let id = localStorage.getItem("nenpyo-client-id");
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem("nenpyo-client-id", id); }
+    setClientId(id);
+  }, []);
+
+  /* ── インタビュー開始 ── */
+  const handleStart = useCallback(async (s: NenpyoSpec) => {
+    setStartError(null);
+    setIsLoading(true);
+    setSpec(s);
+    try {
+      const res = await fetch("/api/interview/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec: s }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "開始に失敗しました");
+      }
+      const data = await res.json() as InterviewResponse;
+      const aiText = [data.acknowledgement, data.question].filter(Boolean).join("\n");
+      setMessages([{ role: "ai", text: aiText, category: data.next_category, isNew: true }]);
+      setQaHistory([{ role: "ai", content: aiText }]);
+      setScreen("interview");
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : "開始に失敗しました");
+      setSpec(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  /* ── 回答送信 ── */
+  const sendAnswer = useCallback(async () => {
+    const trimmed = input.trim();
+    if (!trimmed || isLoading || !spec) return;
+    setInterviewHistory((h) => [...h, { messages, qaHistory, answeredCount, isInterviewComplete, isClosingAsked }]);
+    setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
+    setInput("");
+    setIsLoading(true);
+    setError(null);
+    const updatedQaHistory: QAItem[] = [...qaHistory, { role: "user", content: trimmed }];
+    try {
+      const res = await fetch("/api/interview/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec, qa_history: qaHistory, answer: trimmed, skipped: false, closingAsked: isClosingAsked, clientId }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "送信に失敗しました");
+      }
+      const data = await res.json() as InterviewResponse;
+      handleInterviewResponse(data, updatedQaHistory);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "送信に失敗しました");
+      setMessages((prev) => prev.slice(0, -1));
+      setInput(trimmed);
+      setIsLoading(false);
+    }
+  }, [input, isLoading, spec, qaHistory, messages, answeredCount, isInterviewComplete, isClosingAsked, clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── スキップ ── */
+  const handleSkip = useCallback(async () => {
+    if (isLoading || !spec) return;
+    setInterviewHistory((h) => [...h, { messages, qaHistory, answeredCount, isInterviewComplete, isClosingAsked }]);
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/interview/answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec, qa_history: qaHistory, answer: "", skipped: true, closingAsked: isClosingAsked, clientId }),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json() as InterviewResponse;
+      handleInterviewResponse(data, qaHistory);
+    } catch {
+      setError("スキップに失敗しました");
+      setIsLoading(false);
+    }
+  }, [isLoading, spec, qaHistory, messages, answeredCount, isInterviewComplete, isClosingAsked, clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── AI応答処理 ── */
+  const handleInterviewResponse = (data: InterviewResponse, updatedQaHistory: QAItem[]) => {
+    if (data.is_complete) {
+      setMessages((prev) => [...prev, { role: "ai", text: "インタビューお疲れさまでした！素晴らしいお話をありがとうございます。年表を作りますね！", isNew: true }]);
+      setQaHistory(updatedQaHistory);
+      setAnsweredCount((c) => c + 1);
+      setIsInterviewComplete(true);
+    } else {
+      const aiText = [data.acknowledgement, data.question].filter(Boolean).join("\n");
+      setMessages((prev) => [...prev, { role: "ai", text: aiText, category: data.next_category, isNew: true }]);
+      setQaHistory([...updatedQaHistory, { role: "ai", content: aiText }]);
+      setAnsweredCount((c) => c + 1);
+      if (data.next_category?.startsWith("⑧")) setIsClosingAsked(true);
+    }
+    setIsLoading(false);
+  };
+
+  /* ── 戻る ── */
+  const goBack = () => {
+    if (!interviewHistory.length) return;
+    const prev = interviewHistory[interviewHistory.length - 1];
+    setMessages(prev.messages);
+    setQaHistory(prev.qaHistory);
+    setAnsweredCount(prev.answeredCount);
+    setIsInterviewComplete(prev.isInterviewComplete);
+    setIsClosingAsked(prev.isClosingAsked);
+    setInterviewHistory((h) => h.slice(0, -1));
+    setInput("");
+    setError(null);
+  };
+
+  /* ── 年表生成 ── */
+  const generateTimeline = useCallback(async () => {
+    if (!spec) return;
+    setIsGeneratingTimeline(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/timeline/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec, qa_history: qaHistory, clientId }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "年表の生成に失敗しました");
+      }
+      const data = await res.json() as { timeline: TimelineEvent[] };
+      setTimelineEvents(data.timeline);
+      setScreen("timeline");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "年表の生成に失敗しました");
+    } finally {
+      setIsGeneratingTimeline(false);
+    }
+  }, [spec, qaHistory, clientId]);
+
+  /* ── リセット ── */
+  const handleRestart = () => {
+    setScreen("spec");
+    setSpec(null);
+    setMessages([]);
+    setQaHistory([]);
+    setInput("");
+    setAnsweredCount(0);
+    setIsLoading(false);
+    setError(null);
+    setStartError(null);
+    setIsInterviewComplete(false);
+    setIsClosingAsked(false);
+    setIsGeneratingTimeline(false);
+    setTimelineEvents([]);
+    setInterviewHistory([]);
+  };
+
+  if (screen === "spec") return (
+    <SpecScreen onStart={handleStart} startError={startError} />
+  );
+
+  if (screen === "interview" && spec) return (
+    <InterviewScreen
+      spec={spec}
+      messages={messages}
+      input={input}
+      setInput={setInput}
+      isLoading={isLoading}
+      error={error}
+      isInterviewComplete={isInterviewComplete}
+      answeredCount={answeredCount}
+      onSend={sendAnswer}
+      onSkip={handleSkip}
+      onGenerateTimeline={generateTimeline}
+      isGeneratingTimeline={isGeneratingTimeline}
+      interviewHistoryLen={interviewHistory.length}
+      onBack={goBack}
+    />
+  );
+
+  if (screen === "timeline" && spec) return (
+    <TimelineScreen
+      spec={spec}
+      events={timelineEvents}
+      onEventsChange={setTimelineEvents}
+      onRestart={handleRestart}
+    />
+  );
+
+  return null;
+}
