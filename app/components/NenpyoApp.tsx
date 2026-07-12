@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { NenpyoSpec, QAItem, InterviewResponse, TimelineEvent } from "@/app/types";
-import { calcMaxQuestions } from "@/app/types";
+import { calcMaxQuestions, categoryToAge } from "@/app/types";
 
 /* ─── フェードインテキスト ─── */
 
@@ -202,7 +202,10 @@ function InterviewScreen({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
   const maxQ = calcMaxQuestions(spec.birthYear);
-  const progress = Math.min(100, Math.round((answeredCount / maxQ) * 100));
+  const currentAge = new Date().getFullYear() - spec.birthYear;
+  const currentCategory = [...messages].reverse().find(m => m.role === "ai" && m.category)?.category ?? "";
+  const coveredAge = categoryToAge(currentCategory, currentAge);
+  const ageProgress = currentAge > 0 ? Math.min(100, Math.round((coveredAge / currentAge) * 100)) : 0;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -216,17 +219,24 @@ function InterviewScreen({
     <div className="min-h-screen bg-nbase flex flex-col">
       <Header screen="interview" name={spec.name} />
 
-      {/* プログレス */}
-      <div className="bg-npanel border-b border-nborder px-5 py-3 flex items-center gap-3 no-print">
-        <div className="flex-1 h-2 bg-ndark overflow-hidden rounded-full">
-          <div className="h-full bg-ngold transition-all duration-500 rounded-full" style={{ width: `${progress}%` }} />
+      {/* プログレス（年齢メーター） */}
+      <div className="bg-npanel border-b border-nborder px-5 py-3 no-print">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs text-ngray flex-shrink-0">誕生</span>
+          <div className="flex-1 h-2.5 bg-ndark overflow-hidden rounded-full">
+            <div className="h-full bg-ngold transition-all duration-700 rounded-full" style={{ width: `${ageProgress}%` }} />
+          </div>
+          <span className="text-xs text-ngray flex-shrink-0">現在（{currentAge}歳）</span>
         </div>
-        <span className="text-sm text-ngray flex-shrink-0">{answeredCount}/{maxQ}問</span>
-        {interviewHistoryLen > 0 && (
-          <button onClick={onBack} className="text-sm text-ngray hover:text-ntext transition-colors flex-shrink-0 px-2 py-1">
-            ← 戻る
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-ngold flex-1 truncate">{currentCategory || "①生い立ち・幼少期"}</span>
+          <span className="text-xs text-ngray flex-shrink-0">{answeredCount}/{maxQ}問</span>
+          {interviewHistoryLen > 0 && (
+            <button onClick={onBack} className="text-xs text-ngray hover:text-ntext transition-colors flex-shrink-0 px-2 py-0.5 border border-nborder ml-1">
+              ← 戻る
+            </button>
+          )}
+        </div>
       </div>
 
       {/* メッセージ */}
@@ -397,7 +407,7 @@ function TimelineScreen({
           onClick={() => setOrientation("vertical")}
           className={`text-xs px-3 py-1 border transition-colors ${orientation === "vertical" ? "border-ngold text-ngold" : "border-nborder text-ngray hover:text-ntext"}`}
         >
-          縦書き（横読み）
+          縦書き（右から左）
         </button>
         <div className="flex-1" />
         <button onClick={handleCopyText} className="text-xs px-3 py-1 border border-nborder text-ngray hover:text-ntext transition-colors">
@@ -570,7 +580,7 @@ function HorizontalTimeline({
   );
 }
 
-/* ─── 縦書き年表 ─── */
+/* ─── 縦書き年表（右から左・古い順） ─── */
 
 function VerticalTimeline({
   events, editingId, setEditingId, onUpdate, onDelete, onMove,
@@ -583,69 +593,77 @@ function VerticalTimeline({
   onMove: (id: string, dir: -1 | 1) => void;
 }) {
   return (
-    <div
-      className="overflow-x-auto print-container"
-      style={{ writingMode: "vertical-rl", minHeight: "400px" }}
-    >
-      <div className="flex gap-0">
+    <div className="overflow-x-auto print-container" style={{ minHeight: "400px", paddingBottom: "0.5rem" }}>
+      {/* row-reverse: DOM順(古い→新しい)が右→左に並ぶ */}
+      <div style={{ display: "flex", flexDirection: "row-reverse", width: "max-content", gap: 0, minHeight: "360px" }}>
         {events.map((event, idx) => {
           const isEditing = editingId === event.id;
           return (
-            <div key={event.id} className="flex flex-col items-center group" style={{ minWidth: "5rem" }}>
-              {/* 内容 */}
-              <div className="flex-1 px-2 pt-4 pb-2">
+            <div
+              key={event.id}
+              className="group"
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "5rem", flexShrink: 0 }}
+            >
+              {/* 本文：縦書き */}
+              <div style={{
+                flex: 1,
+                writingMode: "vertical-rl",
+                textOrientation: "mixed",
+                padding: "0.75rem 0.4rem",
+                fontSize: "0.875rem",
+                lineHeight: 1.75,
+                color: "#1C1108",
+                minHeight: "9rem",
+              }}>
                 {isEditing ? (
-                  <div style={{ writingMode: "horizontal-tb" }} className="w-48 space-y-1">
-                    <input
-                      className="w-full border border-ngold bg-nbase px-2 py-1 text-sm text-ntext focus:outline-none"
-                      value={event.year}
-                      onChange={(e) => onUpdate(event.id, "year", e.target.value)}
-                      placeholder="1990年"
-                    />
-                    <input
-                      className="w-full border border-nborder bg-nbase px-2 py-1 text-xs text-ngray focus:outline-none"
-                      value={event.age ?? ""}
-                      onChange={(e) => onUpdate(event.id, "age", e.target.value)}
-                      placeholder="2歳"
-                    />
-                    <input
-                      className="w-full border border-ngold bg-nbase px-2 py-1 text-sm text-ntext focus:outline-none"
-                      value={event.event}
-                      onChange={(e) => onUpdate(event.id, "event", e.target.value)}
-                      placeholder="出来事"
-                    />
-                    <div className="flex gap-1 mt-1">
-                      <button onClick={() => setEditingId(null)} className="text-xs text-white bg-ngold px-3 py-1">保存</button>
-                      <button onClick={() => onDelete(event.id)} className="text-xs text-red-400 border border-red-200 px-3 py-1">削除</button>
+                  <div style={{ writingMode: "horizontal-tb", width: "180px" }} className="space-y-1">
+                    <input className="w-full border border-ngold bg-nbase px-2 py-1 text-sm text-ntext focus:outline-none" value={event.year} onChange={(e) => onUpdate(event.id, "year", e.target.value)} placeholder="1990年" />
+                    <input className="w-full border border-nborder bg-nbase px-2 py-1 text-xs text-ngray focus:outline-none" value={event.age ?? ""} onChange={(e) => onUpdate(event.id, "age", e.target.value)} placeholder="2歳" />
+                    <input className="w-full border border-ngold bg-nbase px-2 py-1 text-sm text-ntext focus:outline-none" value={event.event} onChange={(e) => onUpdate(event.id, "event", e.target.value)} placeholder="出来事" />
+                    <input className="w-full border border-nborder bg-nbase px-2 py-1 text-xs text-ngray focus:outline-none" value={event.emotion ?? ""} onChange={(e) => onUpdate(event.id, "emotion", e.target.value)} placeholder="感情・動機（任意）" />
+                    <div className="flex gap-1">
+                      <button onClick={() => setEditingId(null)} className="text-xs text-white bg-ngold px-2 py-1">保存</button>
+                      <button onClick={() => onDelete(event.id)} className="text-xs text-red-400 border border-red-200 px-2 py-1">削除</button>
                     </div>
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm text-ntext mb-1">{event.event}</p>
-                    {event.emotion && <p className="text-xs text-ngold">{event.emotion}</p>}
+                    {event.event}
+                    {event.emotion && (
+                      <span style={{ color: "#D97706", fontSize: "0.7rem" }}>―{event.emotion}</span>
+                    )}
                   </>
                 )}
               </div>
 
-              {/* タイムラインライン */}
-              <div className="flex items-center gap-0 my-1">
-                {idx > 0 && <div className="h-0.5 w-8 bg-nborder" />}
-                <div className="w-3 h-3 rounded-full bg-ngold flex-shrink-0" />
-                {idx < events.length - 1 && <div className="h-0.5 w-8 bg-nborder" />}
+              {/* ドット＋横線 */}
+              <div style={{ display: "flex", width: "100%", alignItems: "center", flexShrink: 0, padding: "0.25rem 0" }}>
+                {/* 左線（新しい側）: idx < N-1 のとき存在 */}
+                <div style={{ flex: 1, height: "1px", background: idx < events.length - 1 ? "#E8DCC8" : "transparent" }} />
+                <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#D97706", flexShrink: 0 }} />
+                {/* 右線（古い側）: idx > 0 のとき存在 */}
+                <div style={{ flex: 1, height: "1px", background: idx > 0 ? "#E8DCC8" : "transparent" }} />
               </div>
 
-              {/* 年・年齢 */}
-              <div className="px-2 pb-3 text-center">
-                <p className="text-xs font-bold text-ntext">{event.year}</p>
-                {event.age && <p className="text-[10px] text-ngray">{event.age}</p>}
+              {/* 年・年齢：縦書き */}
+              <div style={{
+                writingMode: "vertical-rl",
+                fontSize: "0.7rem",
+                color: "#6B7280",
+                fontWeight: "bold",
+                padding: "0.5rem 0.25rem",
+                flexShrink: 0,
+              }}>
+                {event.year}{event.age ? `・${event.age}` : ""}
               </div>
 
-              {/* 編集ボタン */}
+              {/* 編集ボタン（ホバーで表示） */}
               {!isEditing && (
-                <div style={{ writingMode: "horizontal-tb" }} className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity no-print mb-2">
-                  <button onClick={() => onMove(event.id, -1)} className="text-xs text-ngray hover:text-ntext">←</button>
-                  <button onClick={() => onMove(event.id, 1)} className="text-xs text-ngray hover:text-ntext">→</button>
-                  <button onClick={() => setEditingId(event.id)} className="text-xs text-ngray hover:text-ntext">編集</button>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity no-print" style={{ display: "flex", gap: "2px", paddingBottom: "4px" }}>
+                  {/* ←=新しい方向、→=古い方向（row-reverseなのでDOMとは逆） */}
+                  <button onClick={() => onMove(event.id, 1)} style={{ fontSize: "0.6rem", color: "#6B7280", padding: "1px 3px" }} title="新しい方向へ">←</button>
+                  <button onClick={() => onMove(event.id, -1)} style={{ fontSize: "0.6rem", color: "#6B7280", padding: "1px 3px" }} title="古い方向へ">→</button>
+                  <button onClick={() => setEditingId(event.id)} style={{ fontSize: "0.6rem", color: "#6B7280", padding: "1px 3px" }}>編集</button>
                 </div>
               )}
             </div>
