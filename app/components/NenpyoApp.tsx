@@ -223,12 +223,12 @@ function InterviewScreen({
     <div className="min-h-screen bg-nbase flex flex-col">
       <Header screen="interview" name={spec.name} />
 
-      {/* プログレス（年齢メーター） */}
-      <div className="bg-npanel border-b border-nborder px-5 py-3 no-print">
+      {/* プログレス（問数ベース・sticky固定） */}
+      <div className="bg-npanel border-b border-nborder px-5 py-3 no-print sticky top-0 z-10">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs text-ngray flex-shrink-0">誕生</span>
+          <span className="text-xs text-ngray flex-shrink-0">開始</span>
           <div className="flex-1 h-2.5 bg-ndark overflow-hidden rounded-full">
-            <div className="h-full bg-ngold transition-all duration-700 rounded-full" style={{ width: `${ageProgress}%` }} />
+            <div className="h-full bg-ngold transition-all duration-700 rounded-full" style={{ width: `${Math.min(100, Math.round((answeredCount / maxQ) * 100))}%` }} />
           </div>
           <span className="text-xs text-ngray flex-shrink-0">現在（{currentAge}歳）</span>
         </div>
@@ -430,43 +430,55 @@ function TimelineScreen({
         </button>
       </div>
 
+      {/* 縦書きPDFは横向き */}
+      {orientation === "vertical" && (
+        <style>{`@media print { @page { size: A4 landscape; } }`}</style>
+      )}
+
       <div className="flex-1 px-4 py-6 max-w-3xl mx-auto w-full">
-        {/* タイトル */}
-        <div className="mb-6 print-container">
-          <h1 className={`font-display text-2xl text-ngold ${orientation === "vertical" ? "writing-vertical" : ""}`}>
+        {/* タイトルカード */}
+        <div className="mb-6 print-container bg-npanel border border-nborder px-6 py-5 text-center">
+          <h1 className={`font-display text-3xl text-ngold mb-2 ${orientation === "vertical" ? "writing-vertical mx-auto" : ""}`}>
             じぶん年表
           </h1>
-          <p className="text-sm text-ngray mt-1">{spec.name}さんの半生</p>
+          <p className="text-base font-bold text-ntext mb-2">{spec.name}さんの半生</p>
+          <p className="text-sm text-ngray leading-relaxed max-w-xl mx-auto">
+            {events.length > 0
+              ? `${spec.birthYear}年生まれの${spec.name}さんが、AIインタビューで語った${events.length}の出来事を収めた記録です。外の世界で起きた出来事と、そのとき感じた内面の変化—ふたつが重なり合って、ひとつだけの「じぶん年表」ができました。`
+              : `${spec.name}さんの半生をインタビューで紡ぎ出した年表です。`}
+          </p>
         </div>
 
-        {/* 年表本体 */}
-        {orientation === "horizontal" ? (
-          <HorizontalTimeline
-            events={events}
-            editingId={editingId}
-            setEditingId={setEditingId}
-            onUpdate={updateEvent}
-            onDelete={deleteEvent}
-            onMove={moveEvent}
-          />
-        ) : (
-          <VerticalTimeline
-            events={events}
-            editingId={editingId}
-            setEditingId={setEditingId}
-            onUpdate={updateEvent}
-            onDelete={deleteEvent}
-            onMove={moveEvent}
-          />
-        )}
+        {/* 年表本体（白い下敷き） */}
+        <div className="bg-npanel border border-nborder px-4 py-5 print-container">
+          {orientation === "horizontal" ? (
+            <HorizontalTimeline
+              events={events}
+              editingId={editingId}
+              setEditingId={setEditingId}
+              onUpdate={updateEvent}
+              onDelete={deleteEvent}
+              onMove={moveEvent}
+            />
+          ) : (
+            <VerticalTimeline
+              events={events}
+              editingId={editingId}
+              setEditingId={setEditingId}
+              onUpdate={updateEvent}
+              onDelete={deleteEvent}
+              onMove={moveEvent}
+            />
+          )}
 
-        {/* 項目追加 */}
-        <button
-          onClick={addEvent}
-          className="mt-4 w-full border border-dashed border-nborder text-ngray text-sm py-2 hover:border-ngold hover:text-ngold transition-colors no-print"
-        >
-          ＋ 項目を追加
-        </button>
+          {/* 項目追加 */}
+          <button
+            onClick={addEvent}
+            className="mt-4 w-full border border-dashed border-nborder text-ngray text-sm py-2 hover:border-ngold hover:text-ngold transition-colors no-print"
+          >
+            ＋ 項目を追加
+          </button>
+        </div>{/* /年表本体カード */}
 
         {/* 年表を保存 */}
         <div className="mt-8 no-print">
@@ -665,25 +677,26 @@ function VerticalTimeline({
   return (
     <div className="overflow-x-auto print-container" style={{ minHeight: "400px", paddingBottom: "0.5rem" }}>
       {/* row-reverse: DOM順(古い→新しい)が右→左に並ぶ */}
-      <div style={{ display: "flex", flexDirection: "row-reverse", width: "max-content", gap: 0, minHeight: "360px" }}>
+      <div style={{ display: "flex", flexDirection: "row-reverse", width: "max-content", gap: "0.75rem", minHeight: "360px" }}>
         {events.map((event, idx) => {
           const isEditing = editingId === event.id;
           return (
             <div
               key={event.id}
               className="group"
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "5rem", flexShrink: 0 }}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "3.5rem", flexShrink: 0 }}
             >
-              {/* 本文：縦書き */}
+              {/* 本文：縦書き（高さ固定で折り返しなし） */}
               <div style={{
-                flex: 1,
                 writingMode: "vertical-rl",
                 textOrientation: "mixed",
-                padding: "0.75rem 0.4rem",
-                fontSize: "0.875rem",
-                lineHeight: 1.75,
+                padding: "0.5rem 0",
+                fontSize: "0.8rem",
+                lineHeight: 1.6,
                 color: "#1C1108",
-                minHeight: "9rem",
+                height: "16rem",
+                overflow: "hidden",
+                wordBreak: "break-all",
               }}>
                 {isEditing ? (
                   <div style={{ writingMode: "horizontal-tb", width: "180px" }} className="space-y-1">
@@ -718,11 +731,13 @@ function VerticalTimeline({
               {/* 年・年齢：縦書き */}
               <div style={{
                 writingMode: "vertical-rl",
-                fontSize: "0.7rem",
+                fontSize: "0.65rem",
                 color: "#6B7280",
                 fontWeight: "bold",
-                padding: "0.5rem 0.25rem",
+                padding: "0.4rem 0",
                 flexShrink: 0,
+                overflow: "hidden",
+                maxHeight: "5rem",
               }}>
                 {event.year}{event.age ? `・${event.age}` : ""}
               </div>
