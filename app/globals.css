@@ -29,6 +29,16 @@ body {
   scrollbar-color: var(--color-nborder) var(--color-nbase);
 }
 
+@keyframes nenpyo-run {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  25%       { transform: translateX(-50%) translateY(-4px) rotate(-8deg); }
+  75%       { transform: translateX(-50%) translateY(-2px) rotate(5deg); }
+}
+
+.nenpyo-run {
+  animation: nenpyo-run 0.55s ease-in-out infinite;
+}
+
 @media print {
   .no-print { display: none !important; }
   body { background: white; }

@@ -224,11 +224,31 @@ function InterviewScreen({
       <Header screen="interview" name={spec.name} />
 
       {/* プログレス（問数ベース・sticky固定） */}
-      <div className="bg-npanel border-b border-nborder px-5 py-3 no-print sticky top-0 z-10">
-        <div className="flex items-center gap-2 mb-1">
+      <div className="bg-npanel border-b border-nborder px-5 pt-5 pb-3 no-print sticky top-0 z-10">
+        {/* バー＋ねんピョウ */}
+        <div className="flex items-center gap-2 mb-3">
           <span className="text-xs text-ngray flex-shrink-0">開始</span>
-          <div className="flex-1 h-2.5 bg-ndark overflow-hidden rounded-full">
-            <div className="h-full bg-ngold transition-all duration-700 rounded-full" style={{ width: `${Math.min(100, Math.round((answeredCount / maxQ) * 100))}%` }} />
+          <div className="flex-1 relative" style={{ height: "1.75rem" }}>
+            {/* バー背景 */}
+            <div className="absolute inset-x-0 bottom-0 h-2.5 bg-ndark rounded-full overflow-hidden">
+              <div
+                className="h-full bg-ngold rounded-full"
+                style={{ width: `${Math.min(100, Math.round((answeredCount / maxQ) * 100))}%`, transition: "width 0.7s ease" }}
+              />
+            </div>
+            {/* ねんピョウ */}
+            <div
+              className="absolute bottom-2 nenpyo-run"
+              style={{
+                left: `${Math.min(100, Math.round((answeredCount / maxQ) * 100))}%`,
+                transform: "translateX(-50%)",
+                transition: "left 0.7s ease",
+                fontSize: "1.1rem",
+                lineHeight: 1,
+              }}
+            >
+              🐆
+            </div>
           </div>
           <span className="text-xs text-ngray flex-shrink-0">現在（{currentAge}歳）</span>
         </div>
@@ -793,6 +813,12 @@ export function NenpyoApp() {
     setStartError(null);
     setIsLoading(true);
     setSpec(s);
+    // 前回のインタビュー状態をリセット
+    setAnsweredCount(0);
+    setIsInterviewComplete(false);
+    setIsClosingAsked(false);
+    setInterviewHistory([]);
+    setInput("");
     try {
       const res = await fetch("/api/interview/start", {
         method: "POST",
