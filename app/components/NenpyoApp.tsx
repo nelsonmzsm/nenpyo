@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { NenpyoSpec, QAItem, InterviewResponse, TimelineEvent } from "@/app/types";
 import { calcMaxQuestions, categoryToAge } from "@/app/types";
+import { PublishModal } from "./PublishModal";
+import { PublicTimelinesFeed } from "./PublicTimelinesFeed";
 
 /* ─── フェードインテキスト ─── */
 
@@ -162,6 +164,8 @@ function SpecScreen({
           </p>
         </div>
       </div>
+
+      <PublicTimelinesFeed />
     </div>
   );
 }
@@ -331,11 +335,15 @@ function TimelineScreen({
   events,
   onEventsChange,
   onRestart,
+  onPublish,
+  publishedId,
 }: {
   spec: NenpyoSpec;
   events: TimelineEvent[];
   onEventsChange: (events: TimelineEvent[]) => void;
   onRestart: () => void;
+  onPublish: () => void;
+  publishedId: string | null;
 }) {
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   const [copiedText, setCopiedText] = useState(false);
@@ -460,8 +468,28 @@ function TimelineScreen({
           ＋ 項目を追加
         </button>
 
-        {/* SNSシェア */}
+        {/* みんなの年表に公開 */}
         <div className="mt-8 no-print">
+          {publishedId ? (
+            <div className="bg-ndark border border-nborder px-4 py-3 flex items-center gap-3">
+              <span className="text-ngold text-lg">✓</span>
+              <div>
+                <p className="text-sm font-bold text-ntext">みんなの年表に公開しました</p>
+                <p className="text-xs text-ngray mt-0.5">トップページの「みんなの年表」に表示されます</p>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={onPublish}
+              className="w-full border-2 border-ngold text-ngold py-3 text-sm font-bold tracking-wider hover:bg-ngold hover:text-white transition-colors"
+            >
+              🌐 みんなの年表に公開する
+            </button>
+          )}
+        </div>
+
+        {/* SNSシェア */}
+        <div className="mt-4 no-print">
           <p className="text-xs text-ngray mb-2 tracking-wider">シェアする</p>
           <div className="flex flex-wrap gap-2 mb-4">
             <button
@@ -733,6 +761,8 @@ export function NenpyoApp() {
   const [isGeneratingTimeline, setIsGeneratingTimeline] = useState(false);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [clientId, setClientId]           = useState("");
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [publishedId, setPublishedId]     = useState<string | null>(null);
   const [interviewHistory, setInterviewHistory] = useState<Array<{
     messages: Message[]; qaHistory: QAItem[]; answeredCount: number; isInterviewComplete: boolean; isClosingAsked: boolean;
   }>>([]);
@@ -894,6 +924,8 @@ export function NenpyoApp() {
     setIsGeneratingTimeline(false);
     setTimelineEvents([]);
     setInterviewHistory([]);
+    setShowPublishModal(false);
+    setPublishedId(null);
   };
 
   if (screen === "spec") return (
@@ -920,12 +952,27 @@ export function NenpyoApp() {
   );
 
   if (screen === "timeline" && spec) return (
-    <TimelineScreen
-      spec={spec}
-      events={timelineEvents}
-      onEventsChange={setTimelineEvents}
-      onRestart={handleRestart}
-    />
+    <>
+      <TimelineScreen
+        spec={spec}
+        events={timelineEvents}
+        onEventsChange={setTimelineEvents}
+        onRestart={handleRestart}
+        onPublish={() => setShowPublishModal(true)}
+        publishedId={publishedId}
+      />
+      {showPublishModal && (
+        <PublishModal
+          spec={spec}
+          events={timelineEvents}
+          onClose={() => setShowPublishModal(false)}
+          onPublished={(id, _pw) => {
+            setPublishedId(id);
+            setShowPublishModal(false);
+          }}
+        />
+      )}
+    </>
   );
 
   return null;
