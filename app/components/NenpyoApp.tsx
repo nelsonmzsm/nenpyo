@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { NenpyoSpec, QAItem, InterviewResponse, TimelineEvent } from "@/app/types";
 import { calcMaxQuestions, categoryToAge } from "@/app/types";
-import { PublishModal } from "./PublishModal";
+import { SaveModal } from "./SaveModal";
 import { PublicTimelinesFeed } from "./PublicTimelinesFeed";
 
 /* ─── フェードインテキスト ─── */
@@ -335,15 +335,15 @@ function TimelineScreen({
   events,
   onEventsChange,
   onRestart,
-  onPublish,
-  publishedId,
+  onSave,
+  savedToken,
 }: {
   spec: NenpyoSpec;
   events: TimelineEvent[];
   onEventsChange: (events: TimelineEvent[]) => void;
   onRestart: () => void;
-  onPublish: () => void;
-  publishedId: string | null;
+  onSave: () => void;
+  savedToken: string | null;
 }) {
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   const [copiedText, setCopiedText] = useState(false);
@@ -468,22 +468,22 @@ function TimelineScreen({
           ＋ 項目を追加
         </button>
 
-        {/* みんなの年表に公開 */}
+        {/* 年表を保存 */}
         <div className="mt-8 no-print">
-          {publishedId ? (
-            <div className="bg-ndark border border-nborder px-4 py-3 flex items-center gap-3">
-              <span className="text-ngold text-lg">✓</span>
+          {savedToken ? (
+            <div className="bg-ndark border border-nborder px-4 py-3 flex items-start gap-3">
+              <span className="text-ngold text-lg mt-0.5">✓</span>
               <div>
-                <p className="text-sm font-bold text-ntext">みんなの年表に公開しました</p>
-                <p className="text-xs text-ngray mt-0.5">トップページの「みんなの年表」に表示されます</p>
+                <p className="text-sm font-bold text-ntext">年表を保存しました</p>
+                <p className="text-xs text-ngray mt-0.5">編集リンクをメールでお送りしました。<a href={`/edit/${savedToken}`} className="text-ngold hover:opacity-70 underline">編集ページを開く →</a></p>
               </div>
             </div>
           ) : (
             <button
-              onClick={onPublish}
-              className="w-full border-2 border-ngold text-ngold py-3 text-sm font-bold tracking-wider hover:bg-ngold hover:text-white transition-colors"
+              onClick={onSave}
+              className="w-full bg-ngold text-white py-3.5 text-base font-bold tracking-wider hover:opacity-90 transition-opacity"
             >
-              🌐 みんなの年表に公開する
+              📔 年表を保存する
             </button>
           )}
         </div>
@@ -761,8 +761,8 @@ export function NenpyoApp() {
   const [isGeneratingTimeline, setIsGeneratingTimeline] = useState(false);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [clientId, setClientId]           = useState("");
-  const [showPublishModal, setShowPublishModal] = useState(false);
-  const [publishedId, setPublishedId]     = useState<string | null>(null);
+  const [showSaveModal, setShowSaveModal]   = useState(false);
+  const [savedToken, setSavedToken]         = useState<string | null>(null);
   const [interviewHistory, setInterviewHistory] = useState<Array<{
     messages: Message[]; qaHistory: QAItem[]; answeredCount: number; isInterviewComplete: boolean; isClosingAsked: boolean;
   }>>([]);
@@ -924,8 +924,8 @@ export function NenpyoApp() {
     setIsGeneratingTimeline(false);
     setTimelineEvents([]);
     setInterviewHistory([]);
-    setShowPublishModal(false);
-    setPublishedId(null);
+    setShowSaveModal(false);
+    setSavedToken(null);
   };
 
   if (screen === "spec") return (
@@ -958,17 +958,17 @@ export function NenpyoApp() {
         events={timelineEvents}
         onEventsChange={setTimelineEvents}
         onRestart={handleRestart}
-        onPublish={() => setShowPublishModal(true)}
-        publishedId={publishedId}
+        onSave={() => setShowSaveModal(true)}
+        savedToken={savedToken}
       />
-      {showPublishModal && (
-        <PublishModal
+      {showSaveModal && (
+        <SaveModal
           spec={spec}
           events={timelineEvents}
-          onClose={() => setShowPublishModal(false)}
-          onPublished={(id, _pw) => {
-            setPublishedId(id);
-            setShowPublishModal(false);
+          onClose={() => setShowSaveModal(false)}
+          onSaved={(token, _isPublic) => {
+            setSavedToken(token);
+            setShowSaveModal(false);
           }}
         />
       )}
