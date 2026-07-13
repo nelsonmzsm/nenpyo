@@ -339,7 +339,11 @@ function TimelineScreen({
 }) {
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
   const [copiedText, setCopiedText] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const APP_URL = "https://nenpyo-sandy.vercel.app";
+  const shareText = `じぶん年表をつくりました！\n${spec.name}さんの半生（${events.length}項目）\n\n${APP_URL}`;
 
   const updateEvent = (id: string, field: keyof TimelineEvent, value: string) => {
     onEventsChange(events.map((e) => e.id === id ? { ...e, [field]: value } : e));
@@ -457,32 +461,70 @@ function TimelineScreen({
         </button>
 
         {/* SNSシェア */}
-        <div className="mt-8 flex flex-wrap gap-2 no-print">
-          <button
-            onClick={() => {
-              const text = `じぶん年表をつくりました！\n${spec.name}さんの半生（${events.length}項目）\n\nhttps://nenpyo.vercel.app`;
-              window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank");
-            }}
-            className="text-xs px-4 py-2 bg-black text-white hover:opacity-80 transition-opacity"
-          >
-            𝕏 でシェア
-          </button>
-          <button
-            onClick={() => {
-              const text = `じぶん年表をつくりました！\n${spec.name}さんの半生（${events.length}項目）`;
-              window.open(`https://line.me/R/msg/text/?${encodeURIComponent(text)}`, "_blank");
-            }}
-            className="text-xs px-4 py-2 bg-[#00B900] text-white hover:opacity-80 transition-opacity"
-          >
-            LINE でシェア
-          </button>
-          <div className="flex-1" />
-          <button
-            onClick={onRestart}
-            className="text-xs px-4 py-2 border border-nborder text-ngray hover:text-ntext transition-colors"
-          >
-            最初からやり直す
-          </button>
+        <div className="mt-8 no-print">
+          <p className="text-xs text-ngray mb-2 tracking-wider">シェアする</p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button
+              onClick={() => window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}`, "_blank")}
+              className="text-xs px-4 py-2 bg-black text-white hover:opacity-80 transition-opacity"
+            >
+              𝕏
+            </button>
+            <button
+              onClick={() => window.open(`https://www.threads.net/intent/post?text=${encodeURIComponent(shareText)}`, "_blank")}
+              className="text-xs px-4 py-2 text-white hover:opacity-80 transition-opacity"
+              style={{ background: "#000000", border: "1px solid #444" }}
+            >
+              Threads
+            </button>
+            <button
+              onClick={() => window.open(`https://bsky.app/intent/compose?text=${encodeURIComponent(shareText)}`, "_blank")}
+              className="text-xs px-4 py-2 text-white hover:opacity-80 transition-opacity"
+              style={{ background: "#0085FF" }}
+            >
+              Bluesky
+            </button>
+            <button
+              onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(APP_URL)}`, "_blank")}
+              className="text-xs px-4 py-2 text-white hover:opacity-80 transition-opacity"
+              style={{ background: "#1877F2" }}
+            >
+              Facebook
+            </button>
+            <button
+              onClick={() => window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, "_blank")}
+              className="text-xs px-4 py-2 text-white hover:opacity-80 transition-opacity"
+              style={{ background: "#00B900" }}
+            >
+              LINE
+            </button>
+            <button
+              onClick={() => window.open(`https://b.hatena.ne.jp/add?url=${encodeURIComponent(APP_URL)}&title=${encodeURIComponent(`じぶん年表 — ${spec.name}さんの半生`)}`, "_blank")}
+              className="text-xs px-4 py-2 text-white hover:opacity-80 transition-opacity"
+              style={{ background: "#00A4DE" }}
+            >
+              はてな
+            </button>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(APP_URL).then(() => {
+                  setCopiedUrl(true);
+                  setTimeout(() => setCopiedUrl(false), 2000);
+                });
+              }}
+              className="text-xs px-4 py-2 border border-nborder text-ngray hover:text-ntext hover:border-ntext transition-colors"
+            >
+              {copiedUrl ? "コピー済み ✓" : "URLコピー"}
+            </button>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={onRestart}
+              className="text-xs px-4 py-2 border border-nborder text-ngray hover:text-ntext transition-colors"
+            >
+              最初からやり直す
+            </button>
+          </div>
         </div>
       </div>
     </div>
