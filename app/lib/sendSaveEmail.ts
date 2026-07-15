@@ -5,7 +5,7 @@ const resend = process.env.RESEND_API_KEY
   : null;
 
 const APP_URL = "https://nenpyo-sandy.vercel.app";
-const FROM = "じぶん年表 <onboarding@resend.dev>";
+const FROM = "じぶん年表 <nenpyo@otonaki.com>";
 
 export async function sendSaveEmail({
   to,
