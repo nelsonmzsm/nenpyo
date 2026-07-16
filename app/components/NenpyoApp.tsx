@@ -159,9 +159,11 @@ function SpecScreen({
             インタビューをはじめる
           </button>
 
-          <p className="text-sm text-ngray text-center mt-5">
-            入力した情報はAIインタビューにのみ使用します
-          </p>
+          <div className="mt-5 bg-ndark border border-nborder px-4 py-3 space-y-1.5">
+            <p className="text-xs text-ngray leading-relaxed">⏱ インタビューの途中保存はできません。まとまった時間があるときにお話しください。</p>
+            <p className="text-xs text-ngray leading-relaxed">🔒 作成した年表は非公開にできます（保存時に公開・非公開を選べます）。</p>
+            <p className="text-xs text-ngray leading-relaxed">🔏 入力した情報はAIインタビューにのみ使用します。</p>
+          </div>
         </div>
       </div>
 
